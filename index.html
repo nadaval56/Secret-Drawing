@@ -743,8 +743,15 @@ function enterLobby() {
     }
 
     // Phase transition from lobby
-    if (d.phase === 'drawing' && !$('drawingScreen').classList.contains('active')) {
-      enterDrawing(d);
+    if (d.phase === 'drawing' && !$('drawingScreen').classList.contains('active') && !$('waitingScreen').classList.contains('active')) {
+      const hasAssignment = d.assignments && d.assignments[uid];
+      if (hasAssignment) {
+        enterDrawing(d);
+      } else if (isTeacher) {
+        // מורה שלא משתתף — קופץ ישירות להמתנה
+        show('waitingScreen');
+        watchDrawingProgress();
+      }
     }
   });
 }
@@ -884,21 +891,24 @@ function watchDrawingProgress() {
   onValue(roomRef(), snap => {
     if (!snap.exists()) return;
     const d = snap.val();
-    const players = d.players||{};
-    const drawings = d.drawings||{};
-    const ids = Object.keys(players);
+    const players    = d.players    || {};
+    const drawings   = d.drawings   || {};
+    const assignments = d.assignments || {};
+    // רק מי שקיבל assignment אמור לצייר
+    const assignedIds = Object.keys(assignments);
 
-    // Progress list
+    // Progress list — מציג רק מציירים
     const list = $('waitProg'); list.innerHTML='';
-    ids.forEach(id => {
+    assignedIds.forEach(id => {
       const div = document.createElement('div');
       div.className = 'prog-item ' + (drawings[id]?'done':'pending');
-      div.textContent = (drawings[id]?'✅ ':'⏳ ') + players[id].name;
+      div.textContent = (drawings[id]?'✅ ':'⏳ ') + (players[id]?.name || '?');
       list.appendChild(div);
     });
 
-    // Teacher auto-advances
-    if (isTeacher && Object.keys(drawings).length >= ids.length && d.phase==='drawing') {
+    // Teacher auto-advances כשכל המציירים סיימו
+    if (isTeacher && assignedIds.length > 0 &&
+        assignedIds.every(id => drawings[id]) && d.phase==='drawing') {
       update(roomRef(), { phase:'matching' });
     }
 
