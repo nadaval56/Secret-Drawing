@@ -307,6 +307,14 @@ textarea { min-height: 130px; resize: vertical; }
 .rev-guess-row .g-answer { flex: 1; }
 .rev-guess-row.correct .g-answer { color: var(--green); font-weight: 700; }
 .rev-guess-row.wrong .g-answer { color: var(--accent); text-decoration: line-through; }
+.my-guess-block { margin-top: 8px; padding: 8px 10px; border-radius: 9px; font-size: 0.82rem; display: none; }
+.rev-card.revealed .my-guess-block { display: block; }
+.my-guess-block.correct { background: #062a1e; border: 2px solid var(--green); }
+.my-guess-block.wrong   { background: #2a0606; border: 2px solid var(--accent); }
+.my-guess-block .mg-guess   { margin-bottom: 3px; }
+.my-guess-block .mg-truth   { font-weight: 900; }
+.rev-card.revealed.my-correct { border-color: var(--green) !important; box-shadow: 0 0 0 3px rgba(6,214,160,0.25); }
+.rev-card.revealed.my-wrong   { border-color: var(--accent) !important; box-shadow: 0 0 0 3px rgba(255,77,109,0.25); }
 .rev-card.spotlight {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px rgba(255,77,109,0.3), 0 12px 40px rgba(255,77,109,0.25);
@@ -938,26 +946,55 @@ window.skipToMatching = async () => {
    SCREEN 5 — MATCHING
    ════════════════════════════════════════════ */
 function enterMatching(d) {
-  if (!$('matchingScreen').classList.contains('active')) show('matchingScreen');
+  if ($('matchingScreen').classList.contains('active') || $('waitRevealScreen').classList.contains('active')) return;
   gData = d;
-  if (isTeacher) $('teacherBar').classList.add('visible');
 
+  // מורה שלא משחק — קופץ למסך המתנה לחשיפה עם כפתור forceReveal
+  if (isTeacher && !d.assignments?.[uid]) {
+    show('waitRevealScreen');
+    $('waitRevealScreen').querySelector('.wait-title').textContent = 'שלב הניחושים';
+    $('waitRevealScreen').querySelector('.wait-sub').textContent = 'התלמידים מנחשים כעת...';
+    // הוסף כפתור forceReveal אם לא קיים
+    if (!$('teacherForceBtn')) {
+      const btn = document.createElement('button');
+      btn.id = 'teacherForceBtn';
+      btn.className = 'btn btn-green mt';
+      btn.textContent = '🎬 עבור לחשיפה';
+      btn.onclick = forceReveal;
+      $('waitRevealScreen').querySelector('.wait-card').appendChild(btn);
+    }
+    // עקוב אחרי כמה הגישו
+    onValue(fieldRef('playerMatches'), snap => {
+      const m = snap.val()||{};
+      const assignedIds = Object.keys(d.assignments||{});
+      const prog = $('revWaitProg'); prog.innerHTML='';
+      assignedIds.forEach(id => {
+        const div = document.createElement('div');
+        div.className = 'prog-item ' + (m[id]?'done':'pending');
+        div.textContent = (m[id]?'✅ ':'⏳ ') + (d.players?.[id]?.name||'?');
+        prog.appendChild(div);
+      });
+    });
+    onValue(fieldRef('phase'), snap => {
+      if (snap.val()==='reveal') get(roomRef()).then(s => { if(s.exists()) enterReveal(s.val()); });
+    });
+    return;
+  }
+
+  show('matchingScreen');
+  if (isTeacher) $('teacherBar').classList.add('visible');
   buildMatchingUI(d);
 
-  // Teacher: watch submissions
   if (isTeacher) {
     onValue(fieldRef('playerMatches'), snap => {
       const m = snap.val()||{};
-      const total = Object.keys(d.players||{}).length;
-      $('matchSubmitCount').textContent = `הגישו: ${Object.keys(m).length} / ${total}`;
+      const assignedIds = Object.keys(d.assignments||{});
+      $('matchSubmitCount').textContent = `הגישו: ${Object.keys(m).length} / ${assignedIds.length}`;
     });
   }
 
-  // Watch for reveal phase
   onValue(fieldRef('phase'), snap => {
-    if (snap.val()==='reveal') {
-      get(roomRef()).then(s => { if(s.exists()) enterReveal(s.val()); });
-    }
+    if (snap.val()==='reveal') get(roomRef()).then(s => { if(s.exists()) enterReveal(s.val()); });
   });
 }
 
@@ -1120,16 +1157,26 @@ function buildRevealGrid(d) {
     if (!drawings[pid]) return;
     const correctPhrase = assignments[pid]||'?';
 
-    // איסוף ניחושים של כל השחקנים עבור ציור זה
+    // ניחושים של כולם
     const guesses = [];
     Object.entries(playerMatches).forEach(([voterId, matchMap])=>{
-      if (voterId === pid) return; // לא סופר את הצייר עצמו
+      if (voterId === pid) return;
       const guess = matchMap?.[pid];
       if (!guess) return;
       guesses.push({ name: players[voterId]?.name||'?', guess, correct: guess===correctPhrase });
     });
 
-    const card=document.createElement('div'); card.className='rev-card'; card.id=`rv-${pid}`; card.dataset.idx=i;
+    // הניחוש האישי של המשתמש הזה
+    const myGuess = playerMatches[uid]?.[pid] ?? null;
+    const myCorrect = myGuess === correctPhrase;
+
+    const card=document.createElement('div');
+    card.className='rev-card'; card.id=`rv-${pid}`; card.dataset.idx=i;
+    // שמור מידע לאנימציה
+    card.dataset.myguess   = myGuess || '';
+    card.dataset.correct   = correctPhrase;
+    card.dataset.mycorrect = myGuess ? (myCorrect?'1':'0') : '';
+
     const img=document.createElement('img'); img.src=drawings[pid];
 
     const info=document.createElement('div'); info.className='rev-info';
@@ -1137,7 +1184,16 @@ function buildRevealGrid(d) {
                     <div class="rev-secret">❓ ???</div>
                     <div class="rev-truth">✅ ${correctPhrase}</div>`;
 
-    // בלוק ניחושים
+    // בלוק ניחוש אישי (מוצג רק אחרי חשיפה)
+    if (myGuess) {
+      const myBlock = document.createElement('div');
+      myBlock.className = 'my-guess-block ' + (myCorrect?'correct':'wrong');
+      myBlock.innerHTML = `<div class="mg-guess">הניחוש שלך: <strong>${myGuess}</strong></div>
+                           <div class="mg-truth">התשובה הנכונה: ${correctPhrase}</div>`;
+      info.appendChild(myBlock);
+    }
+
+    // ניחושים של כולם
     const guessBlock = document.createElement('div'); guessBlock.className='rev-guesses';
     if (guesses.length === 0) {
       guessBlock.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">אף אחד לא ניחש</div>';
@@ -1160,8 +1216,14 @@ function applyReveal(idx, d) {
   const order = d.revealOrder || Object.keys(d.drawings||{});
   document.querySelectorAll('.rev-card').forEach(c=>{
     const ci=parseInt(c.dataset.idx);
+    const wasRevealed = c.classList.contains('revealed');
     c.classList.toggle('revealed', ci <= idx);
     c.classList.toggle('spotlight', ci === idx);
+
+    // הוסף מסגרת צבעונית כשנחשף לראשונה
+    if (!wasRevealed && ci <= idx && c.dataset.myguess) {
+      c.classList.add(c.dataset.mycorrect==='1' ? 'my-correct' : 'my-wrong');
+    }
     if (ci===idx) c.scrollIntoView({behavior:'smooth',block:'nearest'});
   });
   const total=order.filter(id=>d.drawings?.[id]).length;
@@ -1188,9 +1250,13 @@ async function showScores() {
   const players=d.players||{}, assignments=d.assignments||{},
         pMatches=d.playerMatches||{};
 
+  // רק שחקנים שניחשו (=קיבלו assignment או הגישו ניחושים)
+  const scoringIds = Object.keys(players).filter(id => pMatches[id]);
+
   const scores={};
-  Object.keys(players).forEach(id=>{ scores[id]=0; });
+  scoringIds.forEach(id=>{ scores[id]=0; });
   Object.entries(pMatches).forEach(([voter,guesses])=>{
+    if (!scores.hasOwnProperty(voter)) return;
     Object.entries(guesses||{}).forEach(([drawerId,guess])=>{
       if (assignments[drawerId]===guess) scores[voter]=(scores[voter]||0)+1;
     });
