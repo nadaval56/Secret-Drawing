@@ -300,6 +300,13 @@ textarea { min-height: 130px; resize: vertical; }
 .rev-card .rev-truth { font-size: 0.92rem; font-weight: 900; color: var(--green); display: none; }
 .rev-card.revealed .rev-truth { display: block; }
 .rev-card.revealed .rev-secret { display: none; }
+.rev-guesses { margin-top: 8px; border-top: 1px solid #2a2a3a; padding-top: 8px; display: none; }
+.rev-card.revealed .rev-guesses { display: block; }
+.rev-guess-row { font-size: 0.78rem; padding: 3px 0; display: flex; gap: 6px; align-items: baseline; }
+.rev-guess-row .g-name { color: var(--muted); flex-shrink: 0; }
+.rev-guess-row .g-answer { flex: 1; }
+.rev-guess-row.correct .g-answer { color: var(--green); font-weight: 700; }
+.rev-guess-row.wrong .g-answer { color: var(--accent); text-decoration: line-through; }
 .rev-card.spotlight {
   border-color: var(--accent);
   box-shadow: 0 0 0 4px rgba(255,77,109,0.3), 0 12px 40px rgba(255,77,109,0.25);
@@ -425,6 +432,9 @@ textarea { min-height: 130px; resize: vertical; }
     <div class="wait-title">הציור נשלח! 🎉</div>
     <div class="wait-sub">מחכים שכולם יסיימו לצייר...</div>
     <div class="prog-list" id="waitProg"></div>
+    <div id="teacherSkipWrap" style="display:none;margin-top:18px;">
+      <button class="btn btn-green" onclick="skipToMatching()">⏩ דלג לשלב הניחושים</button>
+    </div>
   </div>
 </div>
 
@@ -894,10 +904,9 @@ function watchDrawingProgress() {
     const players    = d.players    || {};
     const drawings   = d.drawings   || {};
     const assignments = d.assignments || {};
-    // רק מי שקיבל assignment אמור לצייר
     const assignedIds = Object.keys(assignments);
 
-    // Progress list — מציג רק מציירים
+    // Progress list
     const list = $('waitProg'); list.innerHTML='';
     assignedIds.forEach(id => {
       const div = document.createElement('div');
@@ -905,6 +914,9 @@ function watchDrawingProgress() {
       div.textContent = (drawings[id]?'✅ ':'⏳ ') + (players[id]?.name || '?');
       list.appendChild(div);
     });
+
+    // הצג כפתור דילוג למורה
+    if (isTeacher) $('teacherSkipWrap').style.display = 'block';
 
     // Teacher auto-advances כשכל המציירים סיימו
     if (isTeacher && assignedIds.length > 0 &&
@@ -917,6 +929,10 @@ function watchDrawingProgress() {
     }
   });
 }
+
+window.skipToMatching = async () => {
+  await update(roomRef(), { phase:'matching' });
+};
 
 /* ════════════════════════════════════════════
    SCREEN 5 — MATCHING
@@ -1097,16 +1113,44 @@ function enterReveal(d) {
 function buildRevealGrid(d) {
   const grid=$('revealGrid'); grid.innerHTML='';
   const players=d.players||{}, drawings=d.drawings||{},
-        assignments=d.assignments||{}, order=d.revealOrder||Object.keys(drawings);
+        assignments=d.assignments||{}, order=d.revealOrder||Object.keys(drawings),
+        playerMatches=d.playerMatches||{};
 
   order.forEach((pid,i)=>{
     if (!drawings[pid]) return;
+    const correctPhrase = assignments[pid]||'?';
+
+    // איסוף ניחושים של כל השחקנים עבור ציור זה
+    const guesses = [];
+    Object.entries(playerMatches).forEach(([voterId, matchMap])=>{
+      if (voterId === pid) return; // לא סופר את הצייר עצמו
+      const guess = matchMap?.[pid];
+      if (!guess) return;
+      guesses.push({ name: players[voterId]?.name||'?', guess, correct: guess===correctPhrase });
+    });
+
     const card=document.createElement('div'); card.className='rev-card'; card.id=`rv-${pid}`; card.dataset.idx=i;
     const img=document.createElement('img'); img.src=drawings[pid];
+
     const info=document.createElement('div'); info.className='rev-info';
     info.innerHTML=`<div class="rev-drawer">🎨 ${players[pid]?.name||'?'}</div>
                     <div class="rev-secret">❓ ???</div>
-                    <div class="rev-truth">${assignments[pid]||'?'}</div>`;
+                    <div class="rev-truth">✅ ${correctPhrase}</div>`;
+
+    // בלוק ניחושים
+    const guessBlock = document.createElement('div'); guessBlock.className='rev-guesses';
+    if (guesses.length === 0) {
+      guessBlock.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">אף אחד לא ניחש</div>';
+    } else {
+      guesses.forEach(g => {
+        const row = document.createElement('div');
+        row.className = 'rev-guess-row ' + (g.correct?'correct':'wrong');
+        row.innerHTML = `<span class="g-name">${g.name}:</span><span class="g-answer">${g.guess}</span>`;
+        guessBlock.appendChild(row);
+      });
+    }
+    info.appendChild(guessBlock);
+
     card.appendChild(img); card.appendChild(info);
     grid.appendChild(card);
   });
