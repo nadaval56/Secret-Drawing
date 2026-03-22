@@ -860,14 +860,14 @@ function enterDrawing(d) {
   // Web Audio tick-tock
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   let lastTickSec = -1;
-  const playTick = (high) => {
+  const playTick = () => {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.frequency.value = high ? 1200 : 900;
-    gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+    osc.frequency.value = 1100;
+    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.07);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.07);
   };
 
   const tick = () => {
@@ -877,7 +877,7 @@ function enterDrawing(d) {
     // טיקטוק ב-15 שניות אחרונות
     if (rem <= 15 && rem > 0 && rem !== lastTickSec) {
       lastTickSec = rem;
-      playTick(rem % 2 === 0);
+      playTick();
     }
     if (rem===0 && !drawSubmitted) submitDrawing();
     else if (rem>0) setTimeout(tick, 250);
