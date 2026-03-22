@@ -348,6 +348,10 @@ textarea { min-height: 130px; resize: vertical; }
       <input type="text" id="teacherName" placeholder="השם שלך" maxlength="20">
       <div id="catGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px;"></div>
       <div style="font-size:0.82rem;color:var(--muted);margin-bottom:12px;" id="phraseCountLabel"></div>
+      <label style="display:flex;align-items:center;gap:10px;background:var(--surface2);padding:11px 14px;border-radius:11px;cursor:pointer;border:2px solid #333;margin-bottom:14px;font-size:0.92rem;">
+        <input type="checkbox" id="teacherPlays" style="width:18px;height:18px;cursor:pointer;">
+        גם אני מצייר (המורה משתתף כתלמיד)
+      </label>
       <button class="btn btn-red" id="createBtn">✨ צור חדר חדש</button>
       <div class="err" id="teacherErr"></div>
     </div>
@@ -676,9 +680,12 @@ $('createBtn').onclick = async () => {
   myName = name; isTeacher = true;
   roomId = genCode();
 
+  const teacherPlays = $('teacherPlays').checked;
+
   await set(roomRef(), {
     phase: 'lobby',
     teacherId: uid,
+    teacherPlays,
     phrases,
     createdAt: Date.now(),
     players: { [uid]: { name, isTeacher:true, at: Date.now() } }
@@ -745,7 +752,9 @@ function enterLobby() {
 $('startBtn').onclick = async () => {
   const snap = await get(roomRef());
   const d = snap.val();
-  const ids = Object.keys(d.players || {});
+  const teacherPlays = d.teacherPlays || false;
+  const allIds = Object.keys(d.players || {});
+  const ids = teacherPlays ? allIds : allIds.filter(id => id !== uid);
   const phrases = [...(d.phrases||[])].sort(() => Math.random()-0.5);
   const assignments = {};
   ids.forEach((id,i) => { assignments[id] = phrases[i % phrases.length]; });
@@ -927,12 +936,13 @@ function enterMatching(d) {
 }
 
 function buildMatchingUI(d) {
-  const drawings   = d.drawings   || {};
-  const phrases    = d.phrases    || [];
-  const drawingIds = Object.keys(drawings);
+  const drawings    = d.drawings    || {};
+  const assignments = d.assignments || {};
+  const drawingIds  = Object.keys(drawings);
 
-  // Shuffled phrases
-  const shuffled = [...phrases].sort(() => Math.random()-0.5);
+  // Only phrases that actually got a drawing
+  const assignedPhrases = drawingIds.map(id => assignments[id]).filter(Boolean);
+  const shuffled = [...assignedPhrases].sort(() => Math.random()-0.5);
 
   // Drawings panel
   const panel = $('drawingsPanel'); panel.innerHTML='';
@@ -1023,6 +1033,14 @@ window.submitMatches = async () => {
   if (matchSubmitted) return;
   matchSubmitted=true;
   await set(fieldRef(`playerMatches/${uid}`), myMatches);
+
+  if (isTeacher) {
+    // המורה נשאר על מסך ההתאמה עם כפתור "עבור לחשיפה"
+    $('submitMatchBtn').disabled = true;
+    $('submitMatchBtn').textContent = '✅ נשלח!';
+    return;
+  }
+
   show('waitRevealScreen');
   // watch for reveal
   onValue(fieldRef('phase'), snap => {
