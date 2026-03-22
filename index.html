@@ -856,6 +856,7 @@ function enterDrawing(d) {
   // Timer
   const dur  = d.drawDuration || 90;
   const t0   = d.drawStart;
+  let timerStopped = false;
 
   // Web Audio tick-tock
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -871,15 +872,16 @@ function enterDrawing(d) {
   };
 
   const tick = () => {
+    if (timerStopped) return;
+    if (!$('drawingScreen').classList.contains('active')) { timerStopped=true; return; }
     const rem = Math.max(0, dur - Math.floor((Date.now()-t0)/1000));
     $('drawTimer').textContent = rem;
     $('drawTimer').className = 'timer-badge' + (rem<=15?' urgent':'');
-    // טיקטוק ב-15 שניות אחרונות
     if (rem <= 15 && rem > 0 && rem !== lastTickSec) {
       lastTickSec = rem;
       playTick();
     }
-    if (rem===0 && !drawSubmitted) submitDrawing();
+    if (rem===0 && !drawSubmitted) { timerStopped=true; submitDrawing(); }
     else if (rem>0) setTimeout(tick, 250);
   };
   tick();
