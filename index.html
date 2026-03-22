@@ -856,12 +856,31 @@ function enterDrawing(d) {
   // Timer
   const dur  = d.drawDuration || 90;
   const t0   = d.drawStart;
+
+  // Web Audio tick-tock
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  let lastTickSec = -1;
+  const playTick = (high) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.frequency.value = high ? 1200 : 900;
+    gain.gain.setValueAtTime(0.18, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+  };
+
   const tick = () => {
     const rem = Math.max(0, dur - Math.floor((Date.now()-t0)/1000));
     $('drawTimer').textContent = rem;
-    $('drawTimer').className = 'timer-badge' + (rem<=10?' urgent':'');
+    $('drawTimer').className = 'timer-badge' + (rem<=15?' urgent':'');
+    // טיקטוק ב-15 שניות אחרונות
+    if (rem <= 15 && rem > 0 && rem !== lastTickSec) {
+      lastTickSec = rem;
+      playTick(rem % 2 === 0);
+    }
     if (rem===0 && !drawSubmitted) submitDrawing();
-    else if (rem>0) setTimeout(tick, 400);
+    else if (rem>0) setTimeout(tick, 250);
   };
   tick();
 
@@ -1184,28 +1203,14 @@ function buildRevealGrid(d) {
                     <div class="rev-secret">❓ ???</div>
                     <div class="rev-truth">✅ ${correctPhrase}</div>`;
 
-    // בלוק ניחוש אישי (מוצג רק אחרי חשיפה)
+    // ניחוש אישי בלבד
     if (myGuess) {
       const myBlock = document.createElement('div');
       myBlock.className = 'my-guess-block ' + (myCorrect?'correct':'wrong');
       myBlock.innerHTML = `<div class="mg-guess">הניחוש שלך: <strong>${myGuess}</strong></div>
-                           <div class="mg-truth">התשובה הנכונה: ${correctPhrase}</div>`;
+                           <div class="mg-truth">התשובה הנכונה: <strong>${correctPhrase}</strong></div>`;
       info.appendChild(myBlock);
     }
-
-    // ניחושים של כולם
-    const guessBlock = document.createElement('div'); guessBlock.className='rev-guesses';
-    if (guesses.length === 0) {
-      guessBlock.innerHTML = '<div style="color:var(--muted);font-size:0.78rem;">אף אחד לא ניחש</div>';
-    } else {
-      guesses.forEach(g => {
-        const row = document.createElement('div');
-        row.className = 'rev-guess-row ' + (g.correct?'correct':'wrong');
-        row.innerHTML = `<span class="g-name">${g.name}:</span><span class="g-answer">${g.guess}</span>`;
-        guessBlock.appendChild(row);
-      });
-    }
-    info.appendChild(guessBlock);
 
     card.appendChild(img); card.appendChild(info);
     grid.appendChild(card);
