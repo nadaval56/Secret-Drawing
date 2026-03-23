@@ -845,8 +845,8 @@ function enterDrawing(d) {
   canvas.onpointermove = e => {
     e.preventDefault(); if (!drawing) return;
     const p = canvasPos(e);
-    drawCtx.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
-    drawCtx.strokeStyle = erasing ? 'rgba(0,0,0,1)' : currentColor;
+    drawCtx.globalCompositeOperation = 'source-over';
+    drawCtx.strokeStyle = erasing ? '#ffffff' : currentColor;
     drawCtx.lineWidth   = erasing ? brushSz*3 : brushSz;
     drawCtx.lineTo(p.x,p.y); drawCtx.stroke();
     drawCtx.beginPath(); drawCtx.moveTo(p.x,p.y);
