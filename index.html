@@ -970,32 +970,38 @@ function enterMatching(d) {
   if ($('matchingScreen').classList.contains('active') || $('waitRevealScreen').classList.contains('active')) return;
   gData = d;
 
-  // מורה שלא משחק — קופץ למסך המתנה לחשיפה עם כפתור forceReveal
+  // מורה שלא משחק — רואה גריד הציורים בקריאה בלבד + כמה הגישו
   if (isTeacher && !d.assignments?.[uid]) {
-    show('waitRevealScreen');
-    $('waitRevealScreen').querySelector('.wait-title').textContent = 'שלב הניחושים';
-    $('waitRevealScreen').querySelector('.wait-sub').textContent = 'התלמידים מנחשים כעת...';
-    // הוסף כפתור forceReveal אם לא קיים
-    if (!$('teacherForceBtn')) {
-      const btn = document.createElement('button');
-      btn.id = 'teacherForceBtn';
-      btn.className = 'btn btn-green mt';
-      btn.textContent = '🎬 עבור לחשיפה';
-      btn.onclick = forceReveal;
-      $('waitRevealScreen').querySelector('.wait-card').appendChild(btn);
-    }
-    // עקוב אחרי כמה הגישו
+    show('matchingScreen');
+    $('teacherBar').classList.add('visible');
+    // בנה גריד ציורים בקריאה בלבד (ללא ביטויים)
+    const panel = $('drawingsPanel'); panel.innerHTML='';
+    const drawings = d.drawings||{}, players = d.players||{};
+    Object.keys(drawings).forEach((pid,i) => {
+      const card = document.createElement('div');
+      card.className='draw-card'; card.style.cursor='default';
+      card.innerHTML=`<div class="card-num">${i+1}</div>
+                      <img src="${drawings[pid]}" style="width:100%;border-radius:8px;">
+                      <div style="font-size:0.78rem;color:#666;margin-top:5px;text-align:center;">${players[pid]?.name||'?'}</div>`;
+      panel.appendChild(card);
+    });
+    // הסתר פאנל הביטויים — המורה רק צופה
+    $('phrasesPanel').innerHTML = '';
+    $('hintArrow').style.display='none';
+    $('submitMatchBtn').style.display='none';
+    document.querySelector('.phrases-panel-title').textContent = '';
+
     onValue(fieldRef('playerMatches'), snap => {
       const m = snap.val()||{};
       const assignedIds = Object.keys(d.assignments||{});
-      const prog = $('revWaitProg'); prog.innerHTML='';
-      assignedIds.forEach(id => {
-        const div = document.createElement('div');
-        div.className = 'prog-item ' + (m[id]?'done':'pending');
-        div.textContent = (m[id]?'✅ ':'⏳ ') + (d.players?.[id]?.name||'?');
-        prog.appendChild(div);
+      $('matchSubmitCount').textContent = `הגישו: ${Object.keys(m).length} / ${assignedIds.length}`;
+      // עדכן חיווי על הציורים
+      assignedIds.forEach(pid => {
+        const card = panel.querySelector(`[data-pid="${pid}"]`);
+        if(card) card.classList.toggle('matched', !!m[pid]);
       });
     });
+
     onValue(fieldRef('phase'), snap => {
       if (snap.val()==='reveal') get(roomRef()).then(s => { if(s.exists()) enterReveal(s.val()); });
     });
@@ -1166,6 +1172,11 @@ function enterReveal(d) {
     revIdx = snap.val() ?? -1;
     applyReveal(revIdx, revData);
   });
+
+  // כולם עוברים לתוצאות כשהמורה מחליט
+  onValue(fieldRef('phase'), snap => {
+    if (snap.val()==='scores') showScores();
+  });
 }
 
 function buildRevealGrid(d) {
@@ -1237,15 +1248,19 @@ function applyReveal(idx, d) {
   $('revealStatus').textContent = idx<0 ? 'לחץ "הבא" להתחלה' :
     idx>=total-1 ? `✅ כל הציורים נחשפו!` : `${idx+1} / ${total}`;
   const btn=$('nextRevBtn');
-  if (idx >= total-1) { btn.textContent='🏆 תוצאות'; btn.onclick=showScores; }
-  else                { btn.textContent='הבא ▶';   btn.onclick=nextReveal; }
+  if (idx >= total-1) { btn.textContent='🏆 לתוצאות'; btn.onclick = isTeacher ? goToScores : null; if(!isTeacher) btn.style.display='none'; }
+  else                { btn.textContent='הבא ▶'; btn.onclick=nextReveal; btn.style.display=''; }
 }
 
 window.nextReveal = async () => {
   const order = revData.revealOrder || Object.keys(revData.drawings||{});
   const ni = revIdx+1;
   await update(roomRef(), { revealIdx: ni });
-  if (ni >= order.length) await update(roomRef(), { phase:'scores' });
+  // לא עוברים לתוצאות אוטומטית — המורה לוחץ ידנית
+};
+
+window.goToScores = async () => {
+  await update(roomRef(), { phase:'scores' });
 };
 
 /* ════════════════════════════════════════════
