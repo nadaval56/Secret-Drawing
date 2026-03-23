@@ -1185,8 +1185,10 @@ function buildRevealGrid(d) {
         assignments=d.assignments||{}, order=d.revealOrder||Object.keys(drawings),
         playerMatches=d.playerMatches||{};
 
-  order.forEach((pid,i)=>{
-    if (!drawings[pid]) return;
+  // סנן רק מי שיש לו ציור — אינדקסים רציפים בלי חורים
+  const validOrder = order.filter(pid => drawings[pid]);
+
+  validOrder.forEach((pid,i)=>{
     const correctPhrase = assignments[pid]||'?';
 
     // ניחושים של כולם
@@ -1232,19 +1234,20 @@ function buildRevealGrid(d) {
 
 function applyReveal(idx, d) {
   const order = d.revealOrder || Object.keys(d.drawings||{});
+  const validOrder = order.filter(id => d.drawings?.[id]);
+  const total = validOrder.length;
+
   document.querySelectorAll('.rev-card').forEach(c=>{
     const ci=parseInt(c.dataset.idx);
     const wasRevealed = c.classList.contains('revealed');
     c.classList.toggle('revealed', ci <= idx);
     c.classList.toggle('spotlight', ci === idx);
-
-    // הוסף מסגרת צבעונית כשנחשף לראשונה
     if (!wasRevealed && ci <= idx && c.dataset.myguess) {
       c.classList.add(c.dataset.mycorrect==='1' ? 'my-correct' : 'my-wrong');
     }
     if (ci===idx) c.scrollIntoView({behavior:'smooth',block:'nearest'});
   });
-  const total=order.filter(id=>d.drawings?.[id]).length;
+
   $('revealStatus').textContent = idx<0 ? 'לחץ "הבא" להתחלה' :
     idx>=total-1 ? `✅ כל הציורים נחשפו!` : `${idx+1} / ${total}`;
   const btn=$('nextRevBtn');
@@ -1253,7 +1256,6 @@ function applyReveal(idx, d) {
 }
 
 window.nextReveal = async () => {
-  const order = revData.revealOrder || Object.keys(revData.drawings||{});
   const ni = revIdx+1;
   await update(roomRef(), { revealIdx: ni });
   // לא עוברים לתוצאות אוטומטית — המורה לוחץ ידנית
